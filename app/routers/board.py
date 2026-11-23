@@ -41,7 +41,7 @@ class ApplyBody(BaseModel):
 
 class TransitionBody(BaseModel):
     action: str = Field(
-        description="mark_reviewed | shortlist | reject | hire | reopen"
+        description="review | shortlist | interview | offer | reject | accept_offer | reject_offer | withdraw"
     )
     actor_id: int
 
@@ -69,10 +69,11 @@ def jobs() -> dict[str, Any]:
 
 @router.get("/admin/listings/pending")
 def pending(actor_id: int) -> dict[str, Any]:
-    actor = auth.get_user(actor_id)
-    if not actor or actor["role"] != "admin":
-        raise HTTPException(status_code=403, detail="admin only")
-    return {"listings": listings.list_pending_for_admin()}
+    result = listings.list_pending_for_admin(actor_id)
+    if not result.get("ok"):
+        raise HTTPException(status_code=403, detail=result.get("error"))
+
+    return result
 
 
 @router.post("/employer/listings")

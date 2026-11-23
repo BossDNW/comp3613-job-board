@@ -51,10 +51,14 @@ def list_jobs_for_graduates() -> list[dict[str, Any]]:
         return [row.model_dump() for row in rows]
 
 
-def list_pending_for_admin() -> list[dict[str, Any]]:
+def list_pending_for_admin(admin_id: int) -> list[dict[str, Any]]:
 
     with Session(engine) as session:
 
+        admin = session.get(Admin, admin_id)
+        if admin is None:
+            return {"ok": False, "error": "admin not found"}
+        
         rows = session.exec(
             select(Listing)
             .where(Listing.status == "pending")
@@ -86,7 +90,7 @@ def submit_listing(
         if apply_mode == "external" and not external_url:
             return {"ok": False, "error": "external_url required"}
 
-        status = "published"
+        status = "pending"
 
         listing = Listing(
             employer_id=employer_id,
@@ -128,6 +132,8 @@ def publish_listing(
 
         session.add(listing)
         session.commit()
+
+        # maybe notify subscribers here
 
         return {"ok": True, "status": "published"}
 
