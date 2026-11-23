@@ -1,6 +1,6 @@
 from app.repositories.user import UserRepository
 from app.utilities.security import encrypt_password, verify_password, create_access_token
-from app.schemas.user import RegularUserCreate
+from app.schemas.user import GraduateCreate
 from typing import Optional
 
 class AuthService:
@@ -30,7 +30,7 @@ class AuthService:
         password: str
     ):
         
-        new_user = RegularUserCreate(
+        new_user = GraduateCreate(
             username=username, 
             email=email, 
             password=encrypt_password(password)
