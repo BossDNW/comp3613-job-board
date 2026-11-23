@@ -11,7 +11,6 @@ from app.models.subscription import Subscription
 from app.models.graduate import Graduate
 from app.models.employer import Employer
 from app.models.admin import Admin
-from app.services.board_auth import get_user
 
 ELIGIBLE_PROGRAMMES = {"DCIT"}
 
@@ -23,6 +22,9 @@ def subscribe(graduate_id: int) -> dict[str, Any]:
         graduate = session.get(Graduate, graduate_id)
         if graduate is None:
             return {"ok": False, "error": "graduate not found"}
+
+        if graduate.programme not in ELIGIBLE_PROGRAMMES:
+            return {"ok": False, "error": "graduate is not eligible"}
 
         existing = session.exec(
             select(Subscription)
@@ -40,9 +42,9 @@ def list_jobs_for_graduates() -> list[dict[str, Any]]:
 
     with Session(engine) as session:
 
-        # may return pending or expired listings
         rows = session.exec(
             select(Listing)
+            .where(Listing.status == "published")
             .order_by(Listing.id)
         ).all()
 
@@ -119,13 +121,42 @@ def publish_listing(
         if listing is None:
             return {"ok": False, "error": "listing not found"}
 
+        if listing.status != "pending":
+            return {"ok": False, "error": "only pending listings can be approved"}
+
         listing.status = "published"
+
         session.add(listing)
         session.commit()
 
-        # publish doesn't notify subscribers
-        return {"ok": True, "notified": False}
-    
+        return {"ok": True, "status": "published"}
+
+
+def reject_listing(
+    admin_id: int,
+    listing_id: int,
+) -> dict[str, Any]:
+
+    with Session(engine) as session:
+
+        admin = session.get(Admin, admin_id)
+        if admin is None:
+            return {"ok": False, "error": "admin not found"}
+
+        listing = session.get(Listing, listing_id)
+        if listing is None:
+            return {"ok": False, "error": "listing not found"}
+        
+        if listing.status != "pending":
+            return {"ok": False, "error": "only pending listings can be rejected"}
+        
+        listing.status = "rejected"
+        
+        session.add(listing)
+        session.commit()
+        
+        return {"ok": True, "status": "rejected"}
+
 
 def notify_subscribers(
     admin_id: int,
@@ -142,6 +173,9 @@ def notify_subscribers(
         if listing is None:
             return {"ok": False, "error": "listing not found"}
 
+        if listing.status != "published":
+            return {"ok": False, "error": "only published listings can notify subscribers"}
+                
         subscriptions = session.exec(select(Subscription)).all()
         for subscription in subscriptions:
             session.add(
@@ -153,6 +187,6 @@ def notify_subscribers(
                     ),
                 )
             )
-            session.commit()
+        session.commit()
 
-            return {"ok": True, "count": len(subscriptions)}
+        return {"ok": True, "count": len(subscriptions)}
