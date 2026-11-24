@@ -129,64 +129,156 @@ def export_applicants(
 
     return {"ok": True, "format": "json", "package": result["applicants"]}
 
-
-def transition_application(
-    actor_id: int,
-    application_id: int,
-    action: str
+def export_applicants_admin(
+    listing_id: int
 ) -> dict[str, Any]:
 
     with Session(engine) as session:
 
-        # get the application and check if it exists
+        listing = session.get(Listing, listing_id)
+
+        if listing is None:
+            return {
+                "ok": False,
+                "error": "listing not found"
+            }
+
+        applicants = session.exec(
+            select(Application)
+            .where(Application.listing_id == listing_id)
+            .order_by(Application.id)
+        ).all()
+
+        return {
+            "ok": True,
+            "format": "json",
+            "package": [
+                applicant.model_dump()
+                for applicant in applicants
+            ]
+        }
+
+def transition_application(
+    actor_id: int,
+    application_id: int,
+    action: str,
+    actor_role: str
+) -> dict[str, Any]:
+
+    with Session(engine) as session:
+
         application = session.get(Application, application_id)
+
         if application is None:
-            return {"ok": False, "error": "application not found"}
+            return {
+                "ok": False,
+                "error": "application not found"
+            }
 
-        # get the actor and check the type of user
-        graduate = session.get(Graduate, actor_id)
-        employer = session.get(Employer, actor_id)
+        # Identify the actor using their verified role.
+        if actor_role == "graduate":
 
-        if graduate is not None:
-            allowed_actions = GRADUATE_ACTIONS
+            graduate = session.get(Graduate, actor_id)
 
-        elif employer is not None:
-            allowed_actions = EMPLOYER_ACTIONS
+            if graduate is None:
+                return {"ok": False, "error": "forbidden"}
 
-        else:
-            return {"ok": False, "error": "user not found"}
-
-        if action not in allowed_actions:
-            return {"ok": False, "error": "forbidden"}
-
-        # check if this application belongs to this graduate
-        if graduate is not None:
             if application.graduate_id != graduate.id:
                 return {"ok": False, "error": "forbidden"}
 
-        # check if this application belongs to this employer's listings
-        if employer is not None:
-            listing = session.get(Listing, application.listing_id)
+            allowed_actions = GRADUATE_ACTIONS
+
+        elif actor_role == "employer":
+
+            employer = session.get(Employer, actor_id)
+
+            if employer is None:
+                return {"ok": False, "error": "forbidden"}
+
+            listing = session.get(
+                Listing, application.listing_id
+            )
 
             if listing is None:
-                return {"ok": False, "error": "listing not found"}
+                return {
+                    "ok": False,
+                    "error": "listing not found"
+                }
 
             if listing.employer_id != employer.id:
                 return {"ok": False, "error": "forbidden"}
 
-        state = get_state(application)
-        if state is None:
-            return {"ok": False, "error": "invalid application state"}
+            allowed_actions = EMPLOYER_ACTIONS
 
-        # get the method corresponding to the action
-        method = getattr(state, action, None)
-        if method is None:
-            return{
+        else:
+            return {"ok": False, "error": "forbidden"}
+
+        # Check the action against the actor's role.
+        if action not in allowed_actions:
+            return {"ok": False, "error": "forbidden"}
+
+        # Do not reopen terminal states.
+        if application.state in {
+            "hired", "rejected", "withdrawn"
+        }:
+            return {
                 "ok": False,
-                "error": f"action '{action}' not allowed in state '{application.state}'"
+                "error": "invalid application state transition"
             }
 
+        # Find the current State Pattern object.
+        state = get_state(application)
+
+        if state is None:
+            return {
+                "ok": False,
+                "error": "invalid application state"
+            }
+
+        # Restrict actions to valid source states.
+        valid_sources = {
+            "review": {"applied"},
+            "shortlist": {"reviewed"},
+            "interview": {"shortlisted"},
+            "offer": {"interview"},
+            "accept_offer": {"offered"},
+            "reject_offer": {"offered"},
+            "reject": {
+                "applied", "reviewed", "shortlisted",
+                "interview", "offered"
+            },
+            "withdraw": {
+                "applied", "reviewed", "shortlisted",
+                "interview", "offered"
+            },
+        }
+
+        if application.state not in valid_sources.get(
+            action, set()
+        ):
+            return {
+                "ok": False,
+                "error": "invalid application state transition"
+            }
+
+        # Delegate the transition to the State Pattern.
+        method = getattr(state, action, None)
+
+        if not callable(method):
+            return {
+                "ok": False,
+                "error": "invalid application state transition"
+            }
+
+        previous_state = application.state
+
         method(application)
+
+        if application.state == previous_state:
+            return {
+                "ok": False,
+                "error": "invalid application state transition"
+            }
 
         session.add(application)
         session.commit()
@@ -195,5 +287,5 @@ def transition_application(
         return {
             "ok": True,
             "application": application.model_dump(),
-            "changed": True,
+            "changed": True
         }

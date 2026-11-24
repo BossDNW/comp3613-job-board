@@ -9,8 +9,73 @@ from pydantic import BaseModel, Field
 
 from app.services import applications, listings
 from app.services import board_auth as auth
+from app.dependencies.auth import AuthDep
+from app.dependencies.session import SessionDep
+from app.dependencies.auth import AuthDep
+from app.dependencies.session import SessionDep
+from app.models.graduate import Graduate
+from app.models.employer import Employer
+from app.models.admin import Admin
+from app.models.graduate import Graduate
+
 
 router = APIRouter(tags=["job-board"])
+
+def require_graduate(current_user: AuthDep, db: SessionDep):
+    graduate = db.get(Graduate, current_user.id)
+
+    if graduate is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Graduate access required"
+        )
+
+    return graduate
+
+
+def require_employer(current_user: AuthDep, db: SessionDep):
+    employer = db.get(Employer, current_user.id)
+
+    if employer is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Employer access required"
+        )
+
+    return employer
+
+
+def require_admin(current_user: AuthDep, db: SessionDep):
+    admin = db.get(Admin, current_user.id)
+
+    if admin is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required"
+        )
+
+    return admin
+
+
+def handle_application_error(result: dict):
+    if result.get("ok"):
+        return result
+
+    error = result.get("error", "request failed")
+
+    if error == "forbidden":
+        code = 403
+    elif error.endswith("not found"):
+        code = 404
+    elif error.startswith("invalid") or "not allowed" in error:
+        code = 409
+    else:
+        code = 400
+
+    raise HTTPException(
+        status_code=code,
+        detail=error
+    )
 
 
 class LoginBody(BaseModel):
@@ -109,41 +174,100 @@ def notify(listing_id: int, body: ActorBody) -> dict[str, Any]:
 
 
 @router.post("/graduates/applications")
-def apply(body: ApplyBody) -> dict[str, Any]:
+def apply(
+    body: ApplyBody,
+    current_user: AuthDep,
+    db: SessionDep
+) -> dict[str, Any]:
+
+    graduate = require_graduate(current_user, db)
+
     result = applications.apply(
-        body.actor_id, body.listing_id, body.cover_letter, body.resume_text
+        graduate.id,
+        body.listing_id,
+        body.cover_letter,
+        body.resume_text
     )
-    if not result.get("ok"):
-        raise HTTPException(status_code=400, detail=result.get("error"))
-    return result
+
+    return handle_application_error(result)
 
 
 @router.get("/graduates/applications")
-def my_apps(actor_id: int) -> dict[str, Any]:
-    return {"applications": applications.my_applications(actor_id)}
+def my_apps(
+    current_user: AuthDep,
+    db: SessionDep
+) -> dict[str, Any]:
+
+    graduate = require_graduate(current_user, db)
+
+    return {
+        "applications": applications.my_applications(
+            graduate.id
+        )
+    }
 
 
 @router.get("/listings/{listing_id}/applicants")
-def applicants(listing_id: int, actor_id: int) -> dict[str, Any]:
-    result = applications.listing_applicants(actor_id, listing_id)
-    if not result.get("ok"):
-        raise HTTPException(status_code=403, detail=result.get("error"))
-    return result
+def applicants(
+    listing_id: int,
+    current_user: AuthDep,
+    db: SessionDep
+) -> dict[str, Any]:
+
+    employer = require_employer(current_user, db)
+
+    result = applications.listing_applicants(
+        employer.id,
+        listing_id
+    )
+
+    return handle_application_error(result)
 
 
 @router.get("/admin/listings/{listing_id}/export")
-def export(listing_id: int, actor_id: int) -> dict[str, Any]:
-    result = applications.export_applicants(actor_id, listing_id)
-    if not result.get("ok"):
-        raise HTTPException(status_code=403, detail=result.get("error"))
-    return result
+def export(
+    listing_id: int,
+    current_user: AuthDep,
+    db: SessionDep
+) -> dict[str, Any]:
+
+    require_admin(current_user, db)
+
+    result = applications.export_applicants_admin(
+        listing_id
+    )
+
+    return handle_application_error(result)
 
 
 @router.post("/applications/{application_id}/transition")
-def transition(application_id: int, body: TransitionBody) -> dict[str, Any]:
+def transition(
+    application_id: int,
+    body: TransitionBody,
+    current_user: AuthDep,
+    db: SessionDep
+) -> dict[str, Any]:
+
+    graduate = db.get(Graduate, current_user.id)
+    employer = db.get(Employer, current_user.id)
+
+    if employer is not None:
+        actor_role = "employer"
+
+    elif graduate is not None:
+        actor_role = "graduate"
+
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Not authorized to change application status"
+        )
+
     result = applications.transition_application(
-        body.actor_id, application_id, body.action
+        actor_id=current_user.id,
+        application_id=application_id,
+        action=body.action,
+        actor_role=actor_role
     )
-    if not result.get("ok"):
-        raise HTTPException(status_code=400, detail=result.get("error"))
-    return result
+
+    return handle_application_error(result)
