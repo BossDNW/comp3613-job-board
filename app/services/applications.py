@@ -1,6 +1,7 @@
 """Application create / read / state transitions."""
 
 from __future__ import annotations
+from datetime import date
 from typing import Any
 from sqlmodel import Session, select
 from app.database import engine
@@ -9,34 +10,9 @@ from app.models.application import Application
 from app.models.listing import Listing
 from app.models.graduate import Graduate
 from app.models.employer import Employer
-from app.models.states import AppliedState, ReviewedState, ShortlistedState, InterviewState, OfferedState, HiredState, RejectedState, WithdrawnState
+from app.models.admin import Admin
 
-
-STATE_CLASSES = {
-    "applied": AppliedState,
-    "reviewed": ReviewedState,
-    "shortlisted": ShortlistedState,
-    "interview": InterviewState,
-    "offered": OfferedState,
-    "hired": HiredState,
-    "rejected": RejectedState,
-    "withdrawn": WithdrawnState,
-}
-
-EMPLOYER_ACTIONS = {
-    "review", "shortlist", "interview", "offer", "reject"
-}
-
-GRADUATE_ACTIONS = {
-    "accept_offer", "reject_offer", "withdraw"
-}
-
-
-def get_state(application: Application):
-    state_class = STATE_CLASSES.get(application.state)
-    if state_class is None:
-        return None
-    return state_class()
+EMPLOYER_ACTIONS = {"review", "shortlist", "reject", "hire"}
 
 
 def apply(
@@ -51,19 +27,35 @@ def apply(
         graduate = session.get(Graduate, graduate_id)
         if graduate is None:
             return {"ok": False, "error": "graduate not found"}
+        if graduate.programme not in {"DCIT"}:
+            return {"ok": False, "error": "graduate is not eligible"}
 
         listing = session.get(Listing, listing_id)
         if listing is None:
             return {"ok": False, "error": "listing not found"}
+        if listing.apply_mode != "collect":
+            return {"ok": False, "error": "external listings cannot accept on-platform applications"}
+        if listing.status != "published":
+            return {"ok": False, "error": "listing is not available"}
+        try:
+            deadline = date.fromisoformat(listing.deadline)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "listing has an invalid deadline"}
+        if deadline < date.today():
+            return {"ok": False, "error": "listing deadline has passed"}
 
         resume = resume_text or graduate.resume_text or ""
+        if not cover_letter or not cover_letter.strip():
+            return {"ok": False, "error": "cover letter is required"}
+        if not resume or not resume.strip():
+            return {"ok": False, "error": "resume is required"}
 
         application = Application(
             listing_id=listing_id,
             graduate_id=graduate_id,
             cover_letter=cover_letter,
             resume_text=resume,
-            state="applied",
+            state="submitted",
         )
 
         session.add(application)
@@ -170,7 +162,6 @@ def transition_application(
     actor_id: int,
     application_id: int,
     action: str,
-    actor_role: str
 ) -> dict[str, Any]:
 
     with Session(engine) as session:
@@ -183,106 +174,25 @@ def transition_application(
                 "error": "application not found"
             }
 
-        # Identify the actor using their verified role.
-        if actor_role == "graduate":
-
-            graduate = session.get(Graduate, actor_id)
-
-            if graduate is None:
-                return {"ok": False, "error": "forbidden"}
-
-            if application.graduate_id != graduate.id:
-                return {"ok": False, "error": "forbidden"}
-
-            allowed_actions = GRADUATE_ACTIONS
-
-        elif actor_role == "employer":
-
-            employer = session.get(Employer, actor_id)
-
-            if employer is None:
-                return {"ok": False, "error": "forbidden"}
-
-            listing = session.get(
-                Listing, application.listing_id
-            )
-
-            if listing is None:
-                return {
-                    "ok": False,
-                    "error": "listing not found"
-                }
-
-            if listing.employer_id != employer.id:
-                return {"ok": False, "error": "forbidden"}
-
-            allowed_actions = EMPLOYER_ACTIONS
-
-        else:
+        # Derive the role from role tables rather than a caller-supplied role.
+        role_rows = sum(
+            session.get(model, actor_id) is not None
+            for model in (Graduate, Employer, Admin)
+        )
+        employer = session.get(Employer, actor_id)
+        if role_rows != 1 or employer is None:
             return {"ok": False, "error": "forbidden"}
 
-        # Check the action against the actor's role.
-        if action not in allowed_actions:
+        listing = session.get(Listing, application.listing_id)
+        if listing is None:
+            return {"ok": False, "error": "listing not found"}
+        if listing.employer_id != employer.id:
             return {"ok": False, "error": "forbidden"}
 
-        # Do not reopen terminal states.
-        if application.state in {
-            "hired", "rejected", "withdrawn"
-        }:
-            return {
-                "ok": False,
-                "error": "invalid application state transition"
-            }
+        if action not in EMPLOYER_ACTIONS:
+            return {"ok": False, "error": "forbidden"}
 
-        # Find the current State Pattern object.
-        state = get_state(application)
-
-        if state is None:
-            return {
-                "ok": False,
-                "error": "invalid application state"
-            }
-
-        # Restrict actions to valid source states.
-        valid_sources = {
-            "review": {"applied"},
-            "shortlist": {"reviewed"},
-            "interview": {"shortlisted"},
-            "offer": {"interview"},
-            "accept_offer": {"offered"},
-            "reject_offer": {"offered"},
-            "reject": {
-                "applied", "reviewed", "shortlisted",
-                "interview", "offered"
-            },
-            "withdraw": {
-                "applied", "reviewed", "shortlisted",
-                "interview", "offered"
-            },
-        }
-
-        if application.state not in valid_sources.get(
-            action, set()
-        ):
-            return {
-                "ok": False,
-                "error": "invalid application state transition"
-            }
-
-        # Delegate the transition to the State Pattern.
-        method = getattr(state, action, None)
-
-        if not callable(method):
-            return {
-                "ok": False,
-                "error": "invalid application state transition"
-            }
-
-        previous_state = application.state
-
-        method(application)
-
-        if application.state == previous_state:
+        if not application.transition(action):
             return {
                 "ok": False,
                 "error": "invalid application state transition"
