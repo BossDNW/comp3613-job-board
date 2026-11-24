@@ -1,0 +1,21 @@
+# Sprint 2 Requirements-to-Tests Mapping
+
+| Acceptance reference | Test | Expected behavior | Actual result | Status |
+|---|---|---|---|---|
+| Lifecycle 10 | `test_state_objects_allow_only_the_next_approved_stage` | Each legal lifecycle stage advances to the next approved state. | Legal transitions passed for all four stage paths. | Pass |
+| Lifecycle 10 | `test_skipped_repeated_and_terminal_actions_are_rejected` | Skipped, repeated, and terminal actions fail without changing state. | No invalid or terminal transition changed state. | Pass |
+| Lifecycle 10 | `test_application_context_delegates_to_the_resolved_state` | `Application.transition()` delegates to the resolved state object. | Context delegated to the resolved state and updated state. | Pass |
+| Lifecycle 10 | Existing terminal-state and lifecycle tests | Rejected and hired applications remain terminal. | Existing and new tests passed. | Pass |
+| Acceptance 12 | Existing employer ownership and role tests | Only the listing employer may advance applications. | Ownership, graduate, admin, overlapping-role, and foreign-employer tests passed. | Pass |
+| Roles 1 / Applications 9 | `test_blank_application_payloads_create_no_record` | Blank cover letters and whitespace resumes must not create applications. | Blank cover letters and whitespace resumes were rejected and no records were created. | Pass |
+| Applications 9 and UC-7 missing materials | `test_saved_resume_is_used_when_request_resume_is_missing` | An omitted or explicitly empty request resume should not create a false record when no profile decision is documented. | Current behavior uses the graduate's saved resume for both omitted and explicitly empty resume fields; the test records this implementation behavior. | Ambiguous |
+| Applications 9 and UC-7 missing materials | `test_resume_is_required_when_no_saved_resume_exists` | A request has no usable resume when both the request and graduate profile are blank. | HTTP 422 was returned and no application record was created. | Pass |
+| **Unresolved stakeholder decision** | Omitted and explicitly empty resume fields | Public acceptance says applications capture cover letter + resume, and the Sprint 1 use case says missing required materials are returned for correction. It does not clearly state whether an explicitly empty field may fall back to a saved graduate resume or whether it must be rejected. The profile use case supports supporting profile resume information, but it does not explicitly define this fallback rule. | A stakeholder must decide whether explicit empty should override/reject saved-profile fallback, or whether saved profile fallback is permitted. | Ambiguous |
+| Listings 4-6 / Applications 13 | `test_unpublished_and_expired_collect_listings_reject_applications` | Unpublished and expired collect listings reject applications without creating records. | Unpublished listings returned 409; expired listings returned 409; no records were created. | Pass |
+| Applications 9 / external 13 | Existing external-listing test | External-link listings cannot create on-platform applications. | Existing test passed and returned an application error. | Pass |
+| Application 11 | Existing and lifecycle tests | Applicants see one consistent persisted status. | Persisted status remained consistent in successful and invalid-transition tests. | Pass |
+| Roles 1 / 12 | `test_protected_application_endpoints_require_authentication` | Protected application endpoints return 401 when unauthenticated. | All four sampled protected endpoints returned 401. | Pass |
+| Trust 15 | Existing listing-applicant ownership tests | Employers cannot retrieve applicants for listings they do not own. | Existing ownership tests passed. | Pass |
+| Trust 16 | Existing admin export tests | Authorized administrators may export; other roles may not. | Existing export authorization tests passed. | Pass |
+| Integration / error handling | `test_repeated_invalid_transition_never_mutates_persisted_status` | Repeated invalid transitions retain the persisted submitted state. | Three repeated invalid transitions left the status unchanged. | Pass |
+| Integration / error handling | `test_invalid_graduate_and_listing_ids_return_not_found` | Invalid graduate and listing IDs report not found. | Both service calls returned the documented not-found result. | Pass |
