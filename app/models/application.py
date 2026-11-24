@@ -7,31 +7,39 @@ class Application(SQLModel, table=True):
     graduate_id: int = Field(foreign_key="graduate.id", index=True)
     cover_letter: str
     resume_text: str
-    state: str = "applied"
+    state: str = "submitted"
 
-    # def __init__(self):
-    #     self.state = AppliedState()
+    def transition(self, action: str) -> bool:
+        from app.models.states import get_state
 
-    def review(self):
-        self.state.review(self)
+        current_state = get_state(self.state)
+        if current_state is None:
+            return False
+        return current_state.transition(self, action)
 
-    def shortlist(self):
-        self.state.shortlist(self)
+    def review(self) -> bool:
+        return self.transition("review")
 
-    def interview(self):
-        self.state.interview(self)
+    def shortlist(self) -> bool:
+        return self.transition("shortlist")
 
-    def offer(self):
-        self.state.offer(self)
+    def interview(self) -> bool:
+        return self.transition("interview")
 
-    def accept_offer(self):
-        self.state.accept_offer(self)
+    def offer(self) -> bool:
+        return self.transition("offer")
 
-    def reject_offer(self):
-        self.state.reject_offer(self)
+    def accept_offer(self) -> bool:
+        return self.transition("accept_offer")
 
-    def reject(self):
-        self.state.reject(self)
+    def reject_offer(self) -> bool:
+        return self.transition("reject_offer")
 
-    def withdraw(self):
-        self.state.withdraw(self)
+    def reject(self) -> bool:
+        return self.transition("reject")
+
+    def withdraw(self) -> bool:
+        return self.transition("withdraw")
+
+    def hire(self) -> bool:
+        return self.transition("hire")
