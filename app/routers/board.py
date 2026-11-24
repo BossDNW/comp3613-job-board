@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -11,20 +11,19 @@ from app.services import applications, listings
 from app.services import board_auth as auth
 from app.dependencies.auth import AuthDep
 from app.dependencies.session import SessionDep
-from app.dependencies.auth import AuthDep
-from app.dependencies.session import SessionDep
 from app.models.graduate import Graduate
 from app.models.employer import Employer
 from app.models.admin import Admin
-from app.models.graduate import Graduate
 
 
 router = APIRouter(tags=["job-board"])
 
 def require_graduate(current_user: AuthDep, db: SessionDep):
     graduate = db.get(Graduate, current_user.id)
+    employer = db.get(Employer, current_user.id)
+    admin = db.get(Admin, current_user.id)
 
-    if graduate is None:
+    if graduate is None or employer is not None or admin is not None:
         raise HTTPException(
             status_code=403,
             detail="Graduate access required"
@@ -35,8 +34,10 @@ def require_graduate(current_user: AuthDep, db: SessionDep):
 
 def require_employer(current_user: AuthDep, db: SessionDep):
     employer = db.get(Employer, current_user.id)
+    graduate = db.get(Graduate, current_user.id)
+    admin = db.get(Admin, current_user.id)
 
-    if employer is None:
+    if employer is None or graduate is not None or admin is not None:
         raise HTTPException(
             status_code=403,
             detail="Employer access required"
@@ -47,8 +48,10 @@ def require_employer(current_user: AuthDep, db: SessionDep):
 
 def require_admin(current_user: AuthDep, db: SessionDep):
     admin = db.get(Admin, current_user.id)
+    graduate = db.get(Graduate, current_user.id)
+    employer = db.get(Employer, current_user.id)
 
-    if admin is None:
+    if admin is None or graduate is not None or employer is not None:
         raise HTTPException(
             status_code=403,
             detail="Administrator access required"
@@ -65,10 +68,23 @@ def handle_application_error(result: dict):
 
     if error == "forbidden":
         code = 403
+    elif error == "graduate is not eligible":
+        code = 403
     elif error.endswith("not found"):
         code = 404
-    elif error.startswith("invalid") or "not allowed" in error:
+    elif error in {
+        "invalid application state transition",
+        "listing is not available",
+        "listing deadline has passed",
+        "external listings cannot accept on-platform applications",
+    }:
         code = 409
+    elif error in {
+        "listing has an invalid deadline",
+        "cover letter is required",
+        "resume is required",
+    }:
+        code = 422
     else:
         code = 400
 
@@ -99,16 +115,14 @@ class ActorBody(BaseModel):
 
 class ApplyBody(BaseModel):
     listing_id: int
-    cover_letter: str
+    cover_letter: str = Field(min_length=1)
     resume_text: str | None = None
-    actor_id: int
 
 
 class TransitionBody(BaseModel):
-    action: str = Field(
-        description="review | shortlist | interview | offer | reject | accept_offer | reject_offer | withdraw"
+    action: Literal["review", "shortlist", "reject", "hire"] = Field(
+        description="review | shortlist | reject | hire"
     )
-    actor_id: int
 
 
 @router.post("/auth/login")
@@ -248,16 +262,15 @@ def transition(
     db: SessionDep
 ) -> dict[str, Any]:
 
-    graduate = db.get(Graduate, current_user.id)
     employer = db.get(Employer, current_user.id)
+    graduate = db.get(Graduate, current_user.id)
+    admin = db.get(Admin, current_user.id)
 
-    if employer is not None:
-        actor_role = "employer"
-
-    elif graduate is not None:
-        actor_role = "graduate"
-
-    else:
+    role_count = sum(
+        role is not None
+        for role in (employer, graduate, admin)
+    )
+    if role_count != 1 or employer is None:
         raise HTTPException(
             status_code=403,
             detail="Not authorized to change application status"
@@ -267,7 +280,6 @@ def transition(
         actor_id=current_user.id,
         application_id=application_id,
         action=body.action,
-        actor_role=actor_role
     )
 
     return handle_application_error(result)
