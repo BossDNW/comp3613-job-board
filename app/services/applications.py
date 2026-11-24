@@ -91,7 +91,15 @@ def my_applications(graduate_id: int) -> list[dict[str, Any]]:
             .order_by(Application.id)
         ).all()
 
-        return [application.model_dump() for application in applications]
+        application_rows = []
+        for application in applications:
+            row = application.model_dump()
+            listing = session.get(Listing, application.listing_id)
+            row["listing_title"] = listing.title if listing else "Listing unavailable"
+            row["listing_company"] = listing.company if listing else ""
+            application_rows.append(row)
+
+        return application_rows
 
 
 def listing_applicants(employer_id: int, listing_id: int) -> dict[str, Any]:
