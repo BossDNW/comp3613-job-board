@@ -134,8 +134,11 @@ def login(body: LoginBody) -> dict[str, Any]:
 
 
 @router.post("/graduates/subscribe")
-def subscribe(body: ActorBody) -> dict[str, Any]:
-    result = listings.subscribe(body.actor_id)
+def subscribe(body: ActorBody, current_user: AuthDep, db: SessionDep) -> dict[str, Any]:
+    graduate = require_graduate(current_user, db)
+    if body.actor_id != graduate.id:
+        raise HTTPException(status_code=403, detail="Actor does not match signed-in user")
+    result = listings.subscribe(graduate.id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
@@ -147,8 +150,11 @@ def jobs() -> dict[str, Any]:
 
 
 @router.get("/admin/listings/pending")
-def pending(actor_id: int) -> dict[str, Any]:
-    result = listings.list_pending_for_admin(actor_id)
+def pending(actor_id: int, current_user: AuthDep, db: SessionDep) -> dict[str, Any]:
+    admin = require_admin(current_user, db)
+    if actor_id != admin.id:
+        raise HTTPException(status_code=403, detail="Actor does not match signed-in user")
+    result = listings.list_pending_for_admin(admin.id)
     if not result.get("ok"):
         raise HTTPException(status_code=403, detail=result.get("error"))
 
@@ -156,9 +162,12 @@ def pending(actor_id: int) -> dict[str, Any]:
 
 
 @router.post("/employer/listings")
-def submit_listing(body: ListingBody) -> dict[str, Any]:
+def submit_listing(body: ListingBody, current_user: AuthDep, db: SessionDep) -> dict[str, Any]:
+    employer = require_employer(current_user, db)
+    if body.actor_id != employer.id:
+        raise HTTPException(status_code=403, detail="Actor does not match signed-in user")
     result = listings.submit_listing(
-        body.actor_id,
+        employer.id,
         body.title,
         body.company,
         body.description,
@@ -172,16 +181,22 @@ def submit_listing(body: ListingBody) -> dict[str, Any]:
 
 
 @router.post("/admin/listings/{listing_id}/publish")
-def publish(listing_id: int, body: ActorBody) -> dict[str, Any]:
-    result = listings.publish_listing(body.actor_id, listing_id)
+def publish(listing_id: int, body: ActorBody, current_user: AuthDep, db: SessionDep) -> dict[str, Any]:
+    admin = require_admin(current_user, db)
+    if body.actor_id != admin.id:
+        raise HTTPException(status_code=403, detail="Actor does not match signed-in user")
+    result = listings.publish_listing(admin.id, listing_id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
 
 
 @router.post("/admin/listings/{listing_id}/notify")
-def notify(listing_id: int, body: ActorBody) -> dict[str, Any]:
-    result = listings.notify_subscribers(body.actor_id, listing_id)
+def notify(listing_id: int, body: ActorBody, current_user: AuthDep, db: SessionDep) -> dict[str, Any]:
+    admin = require_admin(current_user, db)
+    if body.actor_id != admin.id:
+        raise HTTPException(status_code=403, detail="Actor does not match signed-in user")
+    result = listings.notify_subscribers(admin.id, listing_id)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error"))
     return result
