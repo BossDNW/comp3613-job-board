@@ -1,12 +1,13 @@
+from fastapi import Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi import Request, status, Form
+
 from app.dependencies import SessionDep
-from . import router, templates
-from app.services.auth_service import AuthService
 from app.repositories.user import UserRepository
+from app.services.auth_service import AuthService
 from app.utilities.flash import flash
 from app.utilities.security import access_token_cookie_kwargs
-from app.models.admin import Admin
+
+from . import router, templates
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -26,7 +27,9 @@ async def login_action_ajax(
 ):
     user_repo = UserRepository(db)
     auth_service = AuthService(user_repo)
+
     access_token = auth_service.authenticate_user(username, password)
+
     if not access_token:
         flash(request, "Incorrect username or password", "danger")
         return RedirectResponse(
@@ -34,19 +37,15 @@ async def login_action_ajax(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    user = user_repo.get_by_username(username)
-    if user:
-        admin = db.get(Admin, user.id)
-    else:
-        admin = None
-    dest = "admin_home_view" if admin else "user_home_view"
     response = RedirectResponse(
-        url=request.url_for(dest),
+        url=request.url_for("user_home_view"),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
     response.set_cookie(
         key="access_token",
         value=access_token,
         **access_token_cookie_kwargs(),
     )
+
     return response
