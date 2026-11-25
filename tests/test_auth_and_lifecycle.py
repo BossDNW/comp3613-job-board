@@ -213,7 +213,7 @@ def application_data(test_session, monkeypatch):
         graduate_id=graduate.id,
         cover_letter="Interested",
         resume_text="Experience",
-        state="applied",
+        state="submitted",
     )
 
     test_session.add(application)
@@ -243,7 +243,7 @@ def current_state(data):
     return application.state
 
 
-def test_application_follows_full_state_transition_path(
+def test_application_follows_review_and_shortlist_transitions(
     application_data,
 ):
     data = application_data
@@ -258,21 +258,6 @@ def test_application_follows_full_state_transition_path(
             data["employer"],
             "shortlist",
             "shortlisted",
-        ),
-        (
-            data["employer"],
-            "interview",
-            "interview",
-        ),
-        (
-            data["employer"],
-            "offer",
-            "offered",
-        ),
-        (
-            data["graduate"],
-            "accept_offer",
-            "hired",
         ),
     ]
 
@@ -290,47 +275,33 @@ def test_application_follows_full_state_transition_path(
 
 @pytest.mark.parametrize(
     (
-        "starting_state",
-        "actor_key",
         "action",
         "expected_state",
     ),
     [
         (
-            "offered",
-            "graduate",
-            "reject_offer",
-            "rejected",
-        ),
-        (
-            "applied",
-            "graduate",
-            "withdraw",
-            "withdrawn",
-        ),
-        (
-            "applied",
-            "employer",
             "reject",
             "rejected",
         ),
+        (
+            "hire",
+            "hired",
+        ),
     ],
 )
-def test_application_supports_reject_and_withdraw_transitions(
+def test_shortlisted_application_can_be_rejected_or_hired(
     application_data,
-    starting_state,
-    actor_key,
     action,
     expected_state,
 ):
     data = application_data
 
-    data["application"].state = starting_state
+    data["application"].state = "shortlisted"
     data["session"].add(data["application"])
     data["session"].commit()
 
     result = applications.transition_application(
-        data[actor_key].id,
+        data["employer"].id,
         data["application"].id,
         action,
     )
@@ -347,33 +318,40 @@ def test_application_supports_reject_and_withdraw_transitions(
         "action",
     ),
     [
-        # Applied cannot skip directly to later employer states.
         (
-            "applied",
+            "submitted",
             "employer",
             "shortlist",
         ),
         (
-            "applied",
+            "submitted",
             "employer",
-            "interview",
+            "reject",
         ),
         (
-            "applied",
+            "submitted",
             "employer",
-            "offer",
+            "hire",
         ),
-        # Graduate cannot accept an offer before one exists.
         (
-            "applied",
-            "graduate",
-            "accept_offer",
+            "reviewed",
+            "employer",
+            "review",
         ),
-        # Terminal states cannot transition to another state.
+        (
+            "shortlisted",
+            "employer",
+            "shortlist",
+        ),
         (
             "hired",
             "employer",
             "review",
+        ),
+        (
+            "rejected",
+            "employer",
+            "hire",
         ),
     ],
 )
@@ -396,7 +374,7 @@ def test_invalid_application_transition_leaves_state_unchanged(
     )
 
     assert result["ok"] is False
-    assert "not allowed in state" in result["error"]
+    assert result["error"] == "invalid application state transition"
     assert current_state(data) == starting_state
 
 
@@ -414,7 +392,12 @@ def test_invalid_application_transition_leaves_state_unchanged(
         ),
         (
             "employer",
-            "accept_offer",
+            "unsupported",
+            "forbidden",
+        ),
+        (
+            "other_employer",
+            "review",
             "forbidden",
         ),
     ],
@@ -438,7 +421,7 @@ def test_only_permitted_actor_subtypes_can_transition(
         "error": expected_error,
     }
 
-    assert current_state(data) == "applied"
+    assert current_state(data) == "submitted"
 
 
 @pytest.mark.parametrize(
@@ -457,8 +440,12 @@ def test_admin_cannot_transition_application(
         action,
     )
 
-    assert result["ok"] is False
-    assert current_state(data) == "applied"
+    assert result == {
+        "ok": False,
+        "error": "forbidden",
+    }
+
+    assert current_state(data) == "submitted"
 
 
 def test_application_transitions_are_limited_to_owning_actors(
@@ -469,7 +456,7 @@ def test_application_transitions_are_limited_to_owning_actors(
     graduate_result = applications.transition_application(
         data["other_graduate"].id,
         data["application"].id,
-        "withdraw",
+        "review",
     )
 
     employer_result = applications.transition_application(
@@ -488,7 +475,7 @@ def test_application_transitions_are_limited_to_owning_actors(
         "error": "forbidden",
     }
 
-    assert current_state(data) == "applied"
+    assert current_state(data) == "submitted"
 
 
 def test_applicant_listing_is_limited_to_listing_owner(

@@ -1,67 +1,63 @@
+
 from app.models.application_state import ApplicationState
 
+
 class AppliedState(ApplicationState):
-    allowed_actions = frozenset({"review", "reject", "withdraw"})
+    allowed_actions = frozenset({"review"})
 
     def review(self, application):
         application.state = "reviewed"
 
 
 class ReviewedState(ApplicationState):
-    allowed_actions = frozenset({"shortlist", "reject", "withdraw"})
+    allowed_actions = frozenset({"shortlist"})
 
     def shortlist(self, application):
         application.state = "shortlisted"
 
 
 class ShortlistedState(ApplicationState):
-    allowed_actions = frozenset({"interview", "reject", "withdraw"})
+    allowed_actions = frozenset({"reject", "hire"})
 
-    def interview(self, application):
-        application.state = "interview"
+    def hire(self, application):
+        application.state = "hired"
 
 
 class InterviewState(ApplicationState):
-    allowed_actions = frozenset({"offer", "reject", "withdraw"})
+    allowed_actions = frozenset()
 
     def offer(self, application):
         application.state = "offered"
 
 
 class OfferedState(ApplicationState):
-    allowed_actions = frozenset({
-        "accept_offer",
-        "reject_offer",
-        "reject",
-        "withdraw",
-    })
+    allowed_actions = frozenset()
 
     def accept_offer(self, application):
         application.state = "hired"
 
     def reject_offer(self, application):
-        application.state = "rejected"
+        application.state = "withdrawn"
 
 
 class HiredState(ApplicationState):
-    pass
+    allowed_actions = frozenset()
+
 
 class RejectedState(ApplicationState):
-    pass
+    allowed_actions = frozenset()
+
 
 class WithdrawnState(ApplicationState):
-    pass
+    allowed_actions = frozenset()
 
 
 STATE_CLASSES = {
-    "applied": AppliedState,
+    "submitted": AppliedState,
     "reviewed": ReviewedState,
     "shortlisted": ShortlistedState,
-    "interview": InterviewState,
-    "offered": OfferedState,
-    "hired": HiredState,
     "rejected": RejectedState,
-    "withdrawn": WithdrawnState,
+    "hired": HiredState,
 }
 
 

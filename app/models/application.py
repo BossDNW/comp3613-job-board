@@ -1,5 +1,8 @@
+
 from typing import Optional
+
 from sqlmodel import Field, SQLModel
+
 
 class Application(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -7,10 +10,11 @@ class Application(SQLModel, table=True):
     graduate_id: int = Field(foreign_key="graduate.id", index=True)
     cover_letter: str
     resume_text: str
-    state: str = "applied"
+    state: str = "submitted"
 
     def transition(self, action: str) -> bool:
         from app.models.states import get_state
+
         current_state = get_state(self.state)
 
         if current_state is None:
@@ -38,6 +42,9 @@ class Application(SQLModel, table=True):
 
     def reject(self) -> bool:
         return self.transition("reject")
+
+    def hire(self) -> bool:
+        return self.transition("hire")
 
     def withdraw(self) -> bool:
         return self.transition("withdraw")
