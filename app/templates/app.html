@@ -1,32 +1,228 @@
 {% extends "authenticated-base.html" %}
-{% block title %}Home · HireBoard{% endblock %}
+{% block title %}Dashboard · HireBoard{% endblock %}
 
 {% block subpage_content %}
-<h1>Board home</h1>
-<p>
-  Explore the job-board JSON API, then map routes to stakeholder needs.
-  Seeded listings and applications are ready after <code>python manage.py init</code>.
-</p>
-<div class="app-actions">
-  <a href="/docs">Open API docs</a>
-  <a class="secondary" href="/api/jobs">List jobs</a>
-</div>
-
-<section class="application-tracking" id="applications" aria-labelledby="applications-heading">
-  <div class="application-tracking-heading">
+<div class="hb-dashboard" id="hireboard">
+  <section class="hb-hero">
     <div>
-      <p class="application-eyebrow">Graduate applications</p>
-      <h2 id="applications-heading">My applications</h2>
+      <p class="hb-eyebrow">DCIT Career Network</p>
+      <h1>Your career starts here.</h1>
+      <p class="hb-intro">Discover opportunities, connect with employers, and manage your career journey.</p>
     </div>
-  </div>
+    <div class="hb-profile">
+      <span class="hb-avatar">{{ user.username[:1] | upper }}</span>
+      <div>
+        <strong>{{ user.username }}</strong>
+        <span id="hb-role">Loading...</span>
+      </div>
+    </div>
+  </section>
 
-  <div id="application-status" class="application-status" role="status" aria-live="polite">
-    Loading your applications...
-  </div>
-  <div class="application-list" id="application-list"></div>
-</section>
+  <div id="hb-feedback" class="hb-feedback" role="status" aria-live="polite" hidden></div>
+
+  <nav class="hb-tabs" aria-label="Dashboard sections">
+    <button type="button" class="hb-tab is-active" data-page="overview">Overview</button>
+    <button type="button" class="hb-tab" data-page="jobs" data-roles="graduate">Browse jobs</button>
+    <button type="button" class="hb-tab" data-page="applications" data-roles="graduate">My applications</button>
+    <button type="button" class="hb-tab" data-page="notifications" data-roles="graduate">Notifications</button>
+    <button type="button" class="hb-tab" data-page="employer" data-roles="employer">Employer dashboard</button>
+    <button type="button" class="hb-tab" data-page="admin" data-roles="admin">Admin dashboard</button>
+  </nav>
+
+  <section class="hb-page is-active" data-section="overview">
+    <div class="hb-section-heading">
+      <div>
+        <p class="hb-eyebrow">Dashboard</p>
+        <h2>Welcome to HireBoard</h2>
+        <p id="hb-welcome">Loading your workspace...</p>
+      </div>
+    </div>
+
+    <div class="hb-stats">
+      <article class="hb-stat">
+        <span id="hb-job-label">Available opportunities</span>
+        <strong id="hb-job-count">—</strong>
+      </article>
+      <article class="hb-stat">
+        <span id="hb-secondary-label">Your activity</span>
+        <strong id="hb-secondary-count">—</strong>
+      </article>
+      <article class="hb-stat">
+        <span>Account type</span>
+        <strong id="hb-workspace">—</strong>
+      </article>
+    </div>
+
+    <div class="hb-panel">
+      <h3>Your workspace</h3>
+      <p id="hb-next-step">Select an option to get started.</p>
+      <button type="button" class="hb-button" id="hb-start">Open workspace</button>
+    </div>
+  </section>
+
+  <section class="hb-page" data-section="jobs" data-roles="graduate">
+    <div class="hb-section-heading">
+      <div>
+        <p class="hb-eyebrow">Graduate dashboard</p>
+        <h2>Find your next opportunity</h2>
+        <p>Explore approved job listings and apply directly.</p>
+      </div>
+      <button type="button" class="hb-button hb-button-outline" id="hb-subscribe">Subscribe to alerts</button>
+    </div>
+
+    <div class="hb-search">
+      <label for="hb-search-input">Search jobs</label>
+      <input id="hb-search-input" type="search" placeholder="Search by title, company, or keyword">
+    </div>
+
+    <div id="hb-jobs" class="hb-card-grid">
+      <p>Loading jobs...</p>
+    </div>
+  </section>
+
+  <section class="hb-page" data-section="applications" data-roles="graduate">
+    <div class="hb-section-heading">
+      <div>
+        <p class="hb-eyebrow">Graduate dashboard</p>
+        <h2>My applications</h2>
+        <p>Check the latest status of your applications.</p>
+      </div>
+      <button type="button" class="hb-button hb-button-outline" id="hb-refresh-apps">Refresh</button>
+    </div>
+    <div id="hb-applications" class="hb-card-grid">
+      <p>Loading your applications...</p>
+    </div>
+  </section>
+
+  <section class="hb-page" data-section="notifications" data-roles="graduate">
+    <div class="hb-section-heading">
+      <div>
+        <p class="hb-eyebrow">Graduate dashboard</p>
+        <h2>Job notifications</h2>
+        <p>Get updates when administrators publish new opportunities.</p>
+      </div>
+      <button type="button" class="hb-button hb-button-outline" id="hb-refresh-notifications">Refresh</button>
+    </div>
+    <div id="hb-notifications" class="hb-card-grid">
+      <p>Loading notifications...</p>
+    </div>
+  </section>
+
+  <section class="hb-page" data-section="employer" data-roles="employer">
+    <div class="hb-section-heading">
+      <div>
+        <p class="hb-eyebrow">Employer dashboard</p>
+        <h2>Manage job opportunities</h2>
+        <p>Submit listings, view applicants, and manage application statuses.</p>
+      </div>
+    </div>
+
+    <div class="hb-panel">
+      <h3>Post a job</h3>
+      <form id="hb-listing-form" class="hb-form">
+        <label>Job title
+          <input type="text" name="title" maxlength="150" required>
+        </label>
+
+        <label>Company
+          <input type="text" name="company" maxlength="150" required>
+        </label>
+
+        <label>Description
+          <textarea name="description" rows="5" required></textarea>
+        </label>
+
+        <div class="hb-form-row">
+          <label>Application mode
+            <select name="apply_mode" id="hb-apply-mode">
+              <option value="collect">Apply on HireBoard</option>
+              <option value="external">External website</option>
+            </select>
+          </label>
+
+          <label>Deadline
+            <input type="date" name="deadline" id="hb-deadline" required>
+          </label>
+        </div>
+
+        <label id="hb-external-field" hidden>External application URL
+          <input type="url" name="external_url" placeholder="https://example.com/apply">
+        </label>
+
+        <button type="submit" class="hb-button">Submit listing for approval</button>
+      </form>
+    </div>
+
+    <div class="hb-section-heading hb-subheading">
+      <h3>My listings</h3>
+      <button type="button" class="hb-button hb-button-outline" id="hb-refresh-employer">Refresh</button>
+    </div>
+
+    <div id="hb-employer-listings" class="hb-card-grid">
+      <p>Loading listings...</p>
+    </div>
+
+    <div id="hb-applicant-panel" class="hb-panel" hidden>
+      <div class="hb-section-heading">
+        <h3 id="hb-applicant-title">Applicants</h3>
+        <button type="button" class="hb-button hb-button-outline" id="hb-close-applicants">Close</button>
+      </div>
+      <div id="hb-applicant-list"></div>
+    </div>
+  </section>
+
+  <section class="hb-page" data-section="admin" data-roles="admin">
+    <div class="hb-section-heading">
+      <div>
+        <p class="hb-eyebrow">Administrator dashboard</p>
+        <h2>Review pending listings</h2>
+        <p>Approve or reject listings before graduates can see them.</p>
+      </div>
+      <button type="button" class="hb-button hb-button-outline" id="hb-refresh-admin">Refresh</button>
+    </div>
+
+    <div id="hb-pending" class="hb-card-grid">
+      <p>Loading pending listings...</p>
+    </div>
+
+    <div class="hb-panel">
+      <h3>Applicant package export</h3>
+      <form id="hb-export-form" class="hb-form">
+        <label>Listing ID
+          <input type="number" name="listing_id" min="1" required>
+        </label>
+        <button type="submit" class="hb-button hb-button-outline">Export applicant package</button>
+      </form>
+    </div>
+  </section>
+
+  <dialog id="hb-apply-dialog" class="hb-dialog">
+    <form id="hb-application-form" class="hb-form">
+      <div class="hb-dialog-header">
+        <h2 id="hb-apply-title">Apply for job</h2>
+        <button type="button" id="hb-close-dialog" class="hb-close" aria-label="Close dialog">×</button>
+      </div>
+
+      <input type="hidden" name="listing_id">
+
+      <label>Cover letter
+        <textarea name="cover_letter" rows="5" required placeholder="Introduce yourself and explain your interest"></textarea>
+      </label>
+
+      <label>Resume text
+        <textarea name="resume_text" rows="5" required placeholder="Paste your resume here"></textarea>
+      </label>
+
+      <div class="hb-dialog-actions">
+        <button type="button" class="hb-button hb-button-outline" id="hb-cancel-dialog">Cancel</button>
+        <button type="submit" class="hb-button">Submit application</button>
+      </div>
+    </form>
+  </dialog>
+</div>
 {% endblock %}
 
 {% block subpage_scripts %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/gui.css') }}">
 <script src="{{ url_for('static', path='js/app.js') }}" defer></script>
 {% endblock %}

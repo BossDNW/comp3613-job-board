@@ -6,28 +6,79 @@
   <div class="auth-panel">
     <a class="auth-back" href="{{ url_for('index_view') }}">← HireBoard</a>
     <div class="brand-wordmark">HireBoard</div>
-    <p class="auth-tagline">Create an account</p>
+    <p class="auth-tagline">Create a graduate account</p>
 
     <form method="POST" action="{{ url_for('register_view') }}">
       <div class="mb-3">
         <label class="form-label" for="username">Username</label>
-        <input class="form-control" type="text" id="username" name="username" required autofocus>
+        <input
+          class="form-control"
+          type="text"
+          id="username"
+          name="username"
+          minlength="3"
+          maxlength="50"
+          autocomplete="username"
+          required
+          autofocus
+        >
       </div>
+
       <div class="mb-3">
         <label class="form-label" for="email">Email</label>
-        <input class="form-control" type="email" id="email" name="email" required>
+        <input
+          class="form-control"
+          type="email"
+          id="email"
+          name="email"
+          autocomplete="email"
+          required
+        >
       </div>
+
+      <div class="mb-3">
+        <label class="form-label" for="programme">Programme</label>
+        <select
+          class="form-select"
+          id="programme"
+          name="programme"
+          required
+        >
+          <option value="" selected disabled>Select your programme</option>
+          <option value="DCIT">DCIT</option>
+          <option value="OTHER">Other programme</option>
+        </select>
+        <div class="form-text">
+          Applications and subscriptions are currently restricted to eligible DCIT graduates.
+        </div>
+      </div>
+
       <div class="mb-3">
         <label class="form-label" for="password">Password</label>
-        <input class="form-control" type="password" id="password" name="password" required>
+        <input
+          class="form-control"
+          type="password"
+          id="password"
+          name="password"
+          minlength="8"
+          autocomplete="new-password"
+          required
+        >
       </div>
+
       <div class="d-grid gap-2 mb-3">
-        <button class="btn btn-primary btn-lg" type="submit">Register</button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('login_view') }}">Back to sign in</a>
+        <button class="btn btn-primary btn-lg" type="submit">
+          Create account
+        </button>
+        <a class="btn btn-outline-secondary" href="{{ url_for('login_view') }}">
+          Back to sign in
+        </a>
       </div>
 
       {% for message in get_flashed_messages(request) %}
-      <div class="alert alert-{{ message.type }} mb-0" role="alert">{{ message.message }}</div>
+      <div class="alert alert-{{ message.type }} mb-0" role="alert">
+        {{ message.message }}
+      </div>
       {% endfor %}
     </form>
   </div>
